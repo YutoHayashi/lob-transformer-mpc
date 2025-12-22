@@ -83,7 +83,6 @@ class MPC:
             problem += is_traded[h] >= -action[h]
         
         problem.solve(pulp.PULP_CBC_CMD(msg=0))
-        print(f"Status: {pulp.LpStatus[problem.status]}", problem.variables())
         
         optimal_action = int(pulp.value(action[0]))
         next_open_positions = current_open_positions + optimal_action
