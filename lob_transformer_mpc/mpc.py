@@ -59,6 +59,11 @@ class MPC:
             cumulative_returns[i] - cumulative_returns[i - 1] for i in range(1, num_horizons)
         ]
         
+        # Apply decay to interval returns to account for lower prediction accuracy at longer horizons
+        interval_returns = [
+            ret * (self.prediction_decay ** h) for h, ret in enumerate(interval_returns)
+        ]
+        
         problem = pulp.LpProblem("TradingOptimization", pulp.LpMaximize)
         
         # a[horizon] : action at horizon (SELL=-1, HOLD=0, BUY=1)
@@ -71,8 +76,13 @@ class MPC:
         is_traded = pulp.LpVariable.dicts("is_traded", range(num_horizons), cat=pulp.LpBinary)
         
         cost_ratio = self.transaction_fee / 100
+        spread_ratio = self.spread / 100
+        cost = (cost_ratio + (spread_ratio / 2)) * self.transaction_size
+        
         j = pulp.lpSum([
-            (position[h] * self.transaction_size * interval_returns[h]) - (cost_ratio * self.transaction_size * is_traded[h]) for h in range(num_horizons)
+            (position[h] * self.transaction_size * interval_returns[h]) 
+                - (cost * is_traded[h]) 
+            for h in range(num_horizons)
         ])
         problem += j
         
@@ -126,15 +136,15 @@ class MPC:
             
             with torch.no_grad():
                 logits = lob_transformer(x)
-                probabilities = torch.softmax(logits, dim=1)[0]
+                _probabilities = torch.softmax(logits, dim=1)[0]
             
             probability: Probability = {
                 "horizon": dataset_config.horizon,
                 "threshold": dataset_config.threshold,
                 "distribution": {
-                    "down": probabilities[0].item(),
-                    "stay": probabilities[1].item(),
-                    "up": probabilities[2].item(),
+                    "down": _probabilities[0].item(),
+                    "stay": _probabilities[1].item(),
+                    "up": _probabilities[2].item(),
                 }
             }
             
@@ -147,11 +157,15 @@ class MPC:
                  transaction_fee: float,
                  transaction_size: float,
                  max_positions: int,
+                 spread: float,
+                 prediction_decay: float,
                  device: str = "cuda" if torch.cuda.is_available() else "cpu"):
         self.lob_transformers = lob_transformers
         self.transaction_fee = transaction_fee
         self.transaction_size = transaction_size
         self.max_positions = max_positions
+        self.spread = spread
+        self.prediction_decay = prediction_decay
         self.device = device
 
 
@@ -162,12 +176,16 @@ if __name__ == "__main__":
     transaction_fee = 0.01
     transaction_size = 1
     max_positions = 1
+    spread = 0.00
+    prediction_decay = 1.0
     
     mpc = MPC(
         lob_transformers,
         transaction_fee=transaction_fee,
         transaction_size=transaction_size,
-        max_positions=max_positions
+        max_positions=max_positions,
+        spread=spread,
+        prediction_decay=prediction_decay
     )
     
     dummy_probabilities = [
