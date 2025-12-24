@@ -75,6 +75,9 @@ class MPC:
         # is_traded[horizon] : binary variable indicating if a trade is made at horizon
         is_traded = pulp.LpVariable.dicts("is_traded", range(num_horizons), cat=pulp.LpBinary)
         
+        # abs_position[horizon] : absolute value of position for holding penalty
+        abs_position = pulp.LpVariable.dicts("abs_pos", range(num_horizons), lowBound=0, upBound=self.max_positions, cat=pulp.LpInteger)
+        
         cost_ratio = self.transaction_fee / 100
         spread_ratio = self.spread / 100
         cost = (cost_ratio + (spread_ratio / 2)) * self.transaction_size
@@ -82,6 +85,7 @@ class MPC:
         j = pulp.lpSum([
             (position[h] * self.transaction_size * interval_returns[h]) 
                 - (cost * is_traded[h]) 
+                - (self.holding_penalty * self.transaction_size * abs_position[h])
             for h in range(num_horizons)
         ])
         problem += j
@@ -91,6 +95,10 @@ class MPC:
             problem += position[h] == previous_open_positions + action[h]
             problem += is_traded[h] >= action[h]
             problem += is_traded[h] >= -action[h]
+            
+            # Constraints for absolute position
+            problem += abs_position[h] >= position[h]
+            problem += abs_position[h] >= -position[h]
         
         problem.solve(pulp.PULP_CBC_CMD(msg=0))
         
@@ -158,13 +166,15 @@ class MPC:
                  transaction_size: float,
                  max_positions: int,
                  spread: float,
-                 prediction_decay: float,
+                 holding_penalty: float = 0.0,
+                 prediction_decay: float = 1.0,
                  device: str = "cuda" if torch.cuda.is_available() else "cpu"):
         self.lob_transformers = lob_transformers
         self.transaction_fee = transaction_fee
         self.transaction_size = transaction_size
         self.max_positions = max_positions
         self.spread = spread
+        self.holding_penalty = holding_penalty
         self.prediction_decay = prediction_decay
         self.device = device
 
@@ -177,6 +187,7 @@ if __name__ == "__main__":
     transaction_size = 1
     max_positions = 1
     spread = 0.00
+    holding_penalty = 0.0
     prediction_decay = 1.0
     
     mpc = MPC(
@@ -185,6 +196,7 @@ if __name__ == "__main__":
         transaction_size=transaction_size,
         max_positions=max_positions,
         spread=spread,
+        holding_penalty=holding_penalty,
         prediction_decay=prediction_decay
     )
     
