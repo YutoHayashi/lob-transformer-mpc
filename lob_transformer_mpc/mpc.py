@@ -132,10 +132,9 @@ class MPC:
         
         for lob_transformer in self.lob_transformers:
             dataset_config: LOBDatasetConfig = lob_transformer.hparams.dataset_config
-            dataset = LOBDataset(lob_snapshot.copy(), **{
-                **dataset_config.__dict__,
-                "target_cols": [],
-            })
+            dataset_config.target_cols = []
+            
+            dataset = LOBDataset(lob_snapshot.copy(), config=dataset_config)
             
             x, _ = dataset[-1]
             x = (x
