@@ -26,14 +26,17 @@ class MPC:
     
     Objective Function:
     $$
-    J = \sum_{h=0}^{H-1} ( P_h \cdot S \cdot R_h - C \cdot S \cdot I_h )
+    J = \sum_{h=0}^{H-1} ( P_h \cdot S \cdot R_h - (C + \frac{SP}{2}) \cdot S \cdot I_h - \lambda \cdot S \cdot |P_h| )
     $$
     Where:
     - $P_h$: Position at horizon $h$
     - $S$: Transaction size
     - $R_h$: Interval return at horizon $h$
     - $C$: Cost ratio (transaction fee / 100)
+    - $SP$: Spread ratio (spread / 100)
     - $I_h$: Binary variable indicating if a trade occurred at horizon $h$
+    - $\lambda$: Holding penalty
+    - $|P_h|$: Absolute position at horizon $h$
     """
     
     def solve_trading_mip(self,
@@ -157,7 +160,7 @@ class MPC:
             
             probabilities.append(probability)
         
-        return probabilities
+        return probabilities.sort(key=lambda x: x["horizon"])
     
     def __init__(self,
                  lob_transformers: list[LOBTransformer],
